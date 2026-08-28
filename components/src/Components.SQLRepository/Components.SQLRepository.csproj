@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Portfolio.Components.SQLRepository</PackageId>
+    <Description>ISqlRepository: a minimal IDbConnection wrapper abstraction. Database-engine-agnostic on purpose — concrete engines (SQL Server, SQLite, ...) live in their own package and implement this interface.</Description>
+  </PropertyGroup>
+
+</Project>

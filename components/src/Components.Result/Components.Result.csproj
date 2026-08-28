@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Portfolio.Components.Result</PackageId>
+    <Description>Result and Result&lt;T&gt; wrapper types for representing business-rule success/failure explicitly, without throwing exceptions for expected error paths.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" Version="11.11.0" />
+  </ItemGroup>
+
+</Project>

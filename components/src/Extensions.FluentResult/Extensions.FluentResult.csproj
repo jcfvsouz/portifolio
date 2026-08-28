@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Portfolio.Extensions.FluentResult</PackageId>
+    <Description>Extension methods that convert a FluentValidation ValidationResult into Components.Result / Result&lt;T&gt;, so use cases can go straight from validation to a Result without hand-written mapping.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" Version="11.11.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Components.Result\Components.Result.csproj" />
+  </ItemGroup>
+
+</Project>

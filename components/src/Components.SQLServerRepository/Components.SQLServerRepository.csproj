@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Portfolio.Components.SQLServerRepository</PackageId>
+    <Description>SQL Server implementation of ISqlRepository, backed by Microsoft.Data.SqlClient. Reads its connection string from configuration key ConnectionStrings:SqlServer. Ships Dapper as a dependency so consumers get query/execute extension methods on IDbConnection for free.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.35" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Components.SQLRepository\Components.SQLRepository.csproj" />
+  </ItemGroup>
+
+</Project>
