@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Portfolio.Components.Messaging</PackageId>
+    <Description>IEventPublisher: a minimal, broker-agnostic abstraction for publishing integration events. Concrete brokers (RabbitMQ, SQS, ...) live in their own package and implement this interface.</Description>
+  </PropertyGroup>
+
+</Project>

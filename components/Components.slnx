@@ -1,16 +1,20 @@
 <Solution>
   <Folder Name="/samples/">
+    <Project Path="samples/Components.Messaging.RabbitMQ.Sample/Components.Messaging.RabbitMQ.Sample.csproj" />
     <Project Path="samples/Components.Result.Sample/Components.Result.Sample.csproj" />
     <Project Path="samples/Components.SQLServerRepository.Sample/Components.SQLServerRepository.Sample.csproj" />
     <Project Path="samples/Extensions.FluentResult.Sample/Extensions.FluentResult.Sample.csproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/Components.Messaging/Components.Messaging.csproj" />
+    <Project Path="src/Components.Messaging.RabbitMQ/Components.Messaging.RabbitMQ.csproj" />
     <Project Path="src/Components.Result/Components.Result.csproj" />
     <Project Path="src/Components.SQLRepository/Components.SQLRepository.csproj" />
     <Project Path="src/Components.SQLServerRepository/Components.SQLServerRepository.csproj" />
     <Project Path="src/Extensions.FluentResult/Extensions.FluentResult.csproj" />
   </Folder>
   <Folder Name="/test/">
+    <Project Path="test/Components.Messaging.RabbitMQ.Tests/Components.Messaging.RabbitMQ.Tests.csproj" />
     <Project Path="test/Components.Result.Tests/Components.Result.Tests.csproj" />
     <Project Path="test/Components.SQLServerRepository.Tests/Components.SQLServerRepository.Tests.csproj" />
     <Project Path="test/Components.TestSupport/Components.TestSupport.csproj" />
