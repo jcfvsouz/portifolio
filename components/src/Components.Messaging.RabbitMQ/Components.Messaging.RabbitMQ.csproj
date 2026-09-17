@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Portfolio.Components.Messaging.RabbitMQ</PackageId>
+    <Description>RabbitMQ implementation of IEventPublisher, backed by RabbitMQ.Client. Reads its broker settings from configuration section RabbitMq, bound to RabbitMqOptions.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RabbitMQ.Client" Version="7.2.2" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Components.Messaging\Components.Messaging.csproj" />
+  </ItemGroup>
+
+</Project>
