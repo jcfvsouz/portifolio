@@ -14,12 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Components.Messaging.RabbitMQ\Components.Messaging.RabbitMQ.csproj" />
     <ProjectReference Include="..\..\src\Components.Hosting\Components.Hosting.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
