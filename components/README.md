@@ -22,8 +22,9 @@ components/
 │   ├── Extensions.FluentResult/       # ValidationResult -> Result mapping helpers
 │   ├── Components.SQLRepository/      # ISqlRepository — engine-agnostic IDbConnection wrapper
 │   ├── Components.SQLServerRepository/# SQL Server implementation of ISqlRepository (Dapper + Microsoft.Data.SqlClient)
-│   ├── Components.Messaging/          # IEventPublisher — broker-agnostic publish abstraction
-│   └── Components.Messaging.RabbitMQ/ # RabbitMQ implementation of IEventPublisher (RabbitMQ.Client)
+│   ├── Components.Hosting/            # IStartup/UseStartup<T> — composition-root convention for module DI registration
+│   ├── Components.Messaging/          # IEventPublisher/IEventHandler — broker-agnostic pub/sub abstractions
+│   └── Components.Messaging.RabbitMQ/ # RabbitMQ implementation (RabbitMQ.Client): publisher + consumer
 ├── test/
 │   ├── Components.TestSupport/            # shared, non-published test helpers
 │   │   ├── Builders/                          # ValidationResultBuilder, TestConfigurationBuilder
@@ -31,15 +32,17 @@ components/
 │   ├── Components.Result.Tests/
 │   ├── Extensions.FluentResult.Tests/
 │   ├── Components.SQLServerRepository.Tests/
+│   ├── Components.Hosting.Tests/
 │   └── Components.Messaging.RabbitMQ.Tests/
 └── samples/
     ├── Components.Result.Sample/              # console app: every Result/Result<T> factory method, printed
     ├── Extensions.FluentResult.Sample/         # console app: FluentValidation -> ToResult() on a valid/invalid DTO
     ├── Components.SQLServerRepository.Sample/ # console app: real DI wiring + a live SELECT 1 round trip
+    ├── Components.Hosting.Sample/             # console app: a GreetingModule wired via UseStartup<T> into a real generic host
     └── Components.Messaging.RabbitMQ.Sample/  # console app: real DI wiring + a live publish attempt
 ```
 
-`Components.SQLRepository` and `Components.Messaging` have no test project or sample — each is a single interface with no logic to exercise or demonstrate on its own; `Components.SQLServerRepository.Sample` and `Components.Messaging.RabbitMQ.Sample` are what exercise them in practice.
+`Components.SQLRepository` and `Components.Messaging` have no test project or sample — each is a set of interfaces with no logic to exercise or demonstrate on its own; `Components.SQLServerRepository.Sample`, `Components.Hosting.Sample`, and `Components.Messaging.RabbitMQ.Sample` are what exercise them in practice.
 
 ## Packages
 
@@ -62,11 +65,14 @@ Just one interface: `ISqlRepository`, exposing an `IDbConnection Connection`. It
 ### [`Portfolio.Components.SQLServerRepository`](src/Components.SQLServerRepository/README.md)
 The concrete implementation of `ISqlRepository` for SQL Server, using `Microsoft.Data.SqlClient`. It reads its connection string from configuration key `ConnectionStrings:SqlServer`, and registers itself with `services.AddSqlServerRepository()`. Ships `Dapper` as a package dependency so any project referencing this package gets Dapper's `IDbConnection` extension methods (`Query`, `Execute`, ...) for free.
 
+### [`Portfolio.Components.Hosting`](src/Components.Hosting/README.md)
+`IStartup` and `UseStartup<TStartup>()` — a composition-root convention (mirrors classic ASP.NET Core's `Startup` class) for concentrating a module's DI registration into one named class, instead of spreading `services.AddXxx(...)` across `Program.cs`. `Components.Messaging.RabbitMQ`'s `RabbitMqPublisherModule`/`RabbitMqConsumerModule<TEvent, THandler>` are real usages; the sample shows a trivial, unrelated one (`GreetingModule`) to prove it isn't messaging-specific.
+
 ### [`Portfolio.Components.Messaging`](src/Components.Messaging/README.md)
-`IEventPublisher` — a single, broker-agnostic interface for publishing integration events (`PublishAsync<TEvent>`, with optional `destination`/`messageKey` overrides). Knows nothing about RabbitMQ, SQS, or SNS on purpose, so the concrete broker can be swapped by changing DI registration alone.
+`IEventPublisher`/`IEventHandler` — broker-agnostic interfaces for publishing (`PublishAsync<TEvent>`, with optional `destination`/`messageKey` overrides) and consuming (`HandleAsync`) integration events, plus `EventConsumer<TEvent>` (a `BackgroundService`) handling the generic parts of consumption — per-message DI scope, handler dispatch — by delegating the broker-specific parts to an injected `IEventConsumerStartup<TEvent>`. Knows nothing about RabbitMQ, SQS, or SNS on purpose, so the concrete broker can be swapped by changing DI registration alone.
 
 ### [`Portfolio.Components.Messaging.RabbitMQ`](src/Components.Messaging.RabbitMQ/README.md)
-The RabbitMQ implementation of `IEventPublisher`, using `RabbitMQ.Client` 7.2.2. Declares a durable topic exchange per destination (lazily, once), reads broker settings from configuration section `RabbitMq`, and registers itself with `services.AddRabbitMqPublisher(configuration)`. Publisher only for now — a consumer is planned.
+The RabbitMQ implementation, using `RabbitMQ.Client` 7.2.2. **Publisher:** declares a durable topic exchange per destination (lazily, once), reads broker settings from configuration section `RabbitMq`. **Consumer:** `RabbitMqConsumerStartup<TEvent>` implements `Components.Messaging`'s `IEventConsumerStartup<TEvent>` — declares exchange/queue/bind plus a dead-letter exchange+queue, sets QoS/prefetch, consumes with manual ack (a failure routes to the dead-letter queue instead of looping or vanishing), configured per event type under `Consumers:{EventTypeName}`. Ships `RabbitMqPublisherModule`/`RabbitMqConsumerModule<TEvent, THandler>` (`Components.Hosting.IStartup`) so both register via `builder.UseStartup<T>()` instead of raw `services.AddXxx(...)` calls.
 
 ## Building and packing
 
@@ -110,7 +116,8 @@ Each package with runnable behavior has a console app under `samples/`, referenc
 - **`Components.Result.Sample`** — calls every factory method (`Ok`, `Error(string)`, `Error(List<ValidationFailure>)`, both for `Result` and `Result<T>`) and prints the resulting `Success`/`ErrorMessage`/`Content`, including a tiny simulated use case to show the intended calling convention.
 - **`Extensions.FluentResult.Sample`** — defines a throwaway `CampaignDto` + FluentValidation validator, validates one valid and one invalid instance, and prints what `ToResult()`/`ToResult<T>()` produce for each.
 - **`Components.SQLServerRepository.Sample`** — the most useful one for hands-on debugging: builds a real `IConfiguration` from `appsettings.json` (+ environment variable override), registers `AddSqlServerRepository()`, resolves `ISqlRepository` through actual DI, and attempts a live `SELECT 1` via Dapper. It prints which connection string it's using (password redacted) and, if the round trip fails, a friendly explanation rather than a raw stack trace — useful both before the `docker/` SQL Server container exists and afterward, to confirm the container's credentials actually match.
-- **`Components.Messaging.RabbitMQ.Sample`** — same idea for messaging: builds `IConfiguration`, registers `AddRabbitMqPublisher()`, resolves `IEventPublisher` through actual DI, and attempts a live publish. Prints the broker/exchange in use and, if the publish fails (no broker running yet), a friendly explanation instead of a raw stack trace.
+- **`Components.Hosting.Sample`** — deliberately **not** about messaging: a trivial `GreetingModule : IStartup` registering an `IGreeter`, wired via `builder.UseStartup<GreetingModule>()` into a real `Microsoft.Extensions.Hosting` generic host, then resolved and used after `Build()` — proves `UseStartup<T>()` is reusable infrastructure, not something messaging-specific.
+- **`Components.Messaging.RabbitMQ.Sample`** — same idea for messaging: `builder.UseStartup<RabbitMqPublisherModule>()`, resolves `IEventPublisher` through actual DI, and attempts a live publish. Prints the broker/exchange in use and, if the publish fails (no broker running yet), a friendly explanation instead of a raw stack trace.
 
 Run any of them with:
 
@@ -119,6 +126,7 @@ cd components
 dotnet run --project samples/Components.Result.Sample
 dotnet run --project samples/Extensions.FluentResult.Sample
 dotnet run --project samples/Components.SQLServerRepository.Sample
+dotnet run --project samples/Components.Hosting.Sample
 dotnet run --project samples/Components.Messaging.RabbitMQ.Sample
 ```
 
