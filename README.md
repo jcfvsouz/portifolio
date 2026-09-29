@@ -18,7 +18,7 @@ Most portfolio repositories show one thing well — a CRUD API, a UI component, 
                               ▼
                     ┌───────────────────┐
                     │   Campaign API    │   ASP.NET Core, Clean Architecture
-                    │  (Promo.API)      │   SQL Server via Dapper
+                    │  (Promo.Api)      │   SQL Server via Dapper
                     └─────────┬─────────┘
                               │ publishes "CampaignPublished" event
                               ▼
@@ -46,7 +46,7 @@ Everything above the "SMTP" arrow runs as its own container; `docker-compose` wi
 ```
 portfolio-campaign-pipeline/
 ├── components/     # Shared class libraries, packed as local NuGet packages — see components/README.md
-├── api/             # Promo.API — Clean Architecture, publishes CampaignPublished          [planned]
+├── api/             # Promo.Api — Clean Architecture, publishes CampaignPublished — see api/README.md
 ├── worker/           # Promo.Worker — consumes the queue, sends batch e-mail via Mailhog     [planned]
 ├── docker/           # docker-compose.yml wiring API + Worker + RabbitMQ + SQL Server + Mailhog [planned]
 └── k8s/              # Deployment/Service manifests for a local cluster                       [planned]
@@ -61,8 +61,8 @@ portfolio-campaign-pipeline/
 | `components/` — Components.Hosting (`UseStartup<T>` composition root) | ✅ done |
 | `components/` — xUnit tests (builders + fixtures) | ✅ done |
 | `components/` — sample console apps per package | ✅ done |
-| `api/` — Campaign domain, publish endpoint | ⏳ next |
-| `worker/` — queue consumer, batch e-mail dispatch | ⏳ planned |
+| `api/` — Clean Architecture (Domain/Application/Infrastructure), create + publish campaign endpoints | ✅ done |
+| `worker/` — queue consumer, batch e-mail dispatch | ⏳ next |
 | `docker/` — compose file for all 5 containers | ⏳ planned |
 | `k8s/` — manifests for a local cluster | ⏳ planned |
 
