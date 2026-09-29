@@ -1,0 +1,10 @@
+<Project>
+
+  <!-- Shared settings for every project below: target framework, nullable/implicit usings. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
