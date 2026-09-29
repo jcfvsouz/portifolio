@@ -57,10 +57,11 @@ portfolio-campaign-pipeline/
 | Piece | Status |
 |---|---|
 | `components/` — Result, FluentResult extensions, SQL Server repository | ✅ done |
+| `components/` — RabbitMQ messaging (publisher, consumer, dead-letter queue) | ✅ done |
+| `components/` — Components.Hosting (`UseStartup<T>` composition root) | ✅ done |
 | `components/` — xUnit tests (builders + fixtures) | ✅ done |
 | `components/` — sample console apps per package | ✅ done |
-| `components/` — RabbitMQ messaging abstraction | ⏳ next |
-| `api/` — Campaign domain, publish endpoint | ⏳ planned |
+| `api/` — Campaign domain, publish endpoint | ⏳ next |
 | `worker/` — queue consumer, batch e-mail dispatch | ⏳ planned |
 | `docker/` — compose file for all 5 containers | ⏳ planned |
 | `k8s/` — manifests for a local cluster | ⏳ planned |
