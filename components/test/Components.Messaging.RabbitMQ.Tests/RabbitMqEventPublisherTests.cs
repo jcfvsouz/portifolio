@@ -1,230 +1,209 @@
 using System.Text.Json;
-using Microsoft.Extensions.Options;
+using Bogus;
+using Components.Messaging.RabbitMQ.Tests.Fixtures;
 using RabbitMQ.Client;
 
 namespace Components.Messaging.RabbitMQ.Tests;
 
 public class RabbitMqEventPublisherTests
 {
-    private record SampleEvent(string Name);
-
-    private static (IConnection Connection, IChannel Channel) ConnectionReturningAnOpenChannel()
-    {
-        var channel = Substitute.For<IChannel>();
-        channel.IsOpen.Returns(true);
-
-        var connection = Substitute.For<IConnection>();
-        connection.CreateChannelAsync(Arg.Any<CreateChannelOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(channel);
-
-        return (connection, channel);
-    }
-
-    private static IOptions<RabbitMqOptions> OptionsWithExchange(string exchangeName) =>
-        Options.Create(new RabbitMqOptions { ExchangeName = exchangeName });
+    // Note on ordering: Setup_Options_ExchangeName_Result configures a value read once by
+    // RabbitMqEventPublisher's constructor (IOptions<T> is frozen at construction, unlike a
+    // Mock<T> queried lazily per call) - it must run before NewInstance(). Every other
+    // Setup_... call configures mock behavior and runs after, per the repo convention.
 
     [Fact]
     public async Task PublishAsync_creates_a_channel_only_once_across_multiple_publishes()
     {
         // Arrange
-        var (connection, _) = ConnectionReturningAnOpenChannel();
-        var publisher = new RabbitMqEventPublisher(connection, OptionsWithExchange("test-exchange"));
+        var fixture = new RabbitMqEventPublisherFixture();
+        fixture.Setup_Options_ExchangeName_Result("test-exchange");
+        var sut = fixture.NewInstance();
+        fixture.Setup_Connection_CreateChannelAsync_Result();
+        fixture.Setup_Channel_IsOpen_Result(true);
 
         // Act
-        await publisher.PublishAsync(new SampleEvent("first"));
-        await publisher.PublishAsync(new SampleEvent("second"));
+        await sut.PublishAsync(new SampleEvent("first"));
+        await sut.PublishAsync(new SampleEvent("second"));
 
         // Assert
-        await connection.Received(1).CreateChannelAsync(Arg.Any<CreateChannelOptions?>(), Arg.Any<CancellationToken>());
+        fixture.Connection.Verify(c => c.CreateChannelAsync(It.IsAny<CreateChannelOptions?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task PublishAsync_declares_a_durable_topic_exchange_with_the_configured_name()
     {
         // Arrange
-        var (connection, channel) = ConnectionReturningAnOpenChannel();
-        var publisher = new RabbitMqEventPublisher(connection, OptionsWithExchange("orders-exchange"));
+        var fixture = new RabbitMqEventPublisherFixture();
+        fixture.Setup_Options_ExchangeName_Result("orders-exchange");
+        var sut = fixture.NewInstance();
+        fixture.Setup_Connection_CreateChannelAsync_Result();
 
         // Act
-        await publisher.PublishAsync(new SampleEvent("payload"));
+        await sut.PublishAsync(new SampleEvent("payload"));
 
         // Assert
-        await channel.Received(1).ExchangeDeclareAsync(
-            exchange: Arg.Is("orders-exchange"),
-            type: Arg.Is(ExchangeType.Topic),
-            durable: Arg.Is(true),
-            autoDelete: Arg.Is(false),
-            arguments: Arg.Any<IDictionary<string, object?>?>(),
-            passive: Arg.Any<bool>(),
-            noWait: Arg.Any<bool>(),
-            cancellationToken: Arg.Any<CancellationToken>());
+        fixture.Channel.Verify(c => c.ExchangeDeclareAsync(
+            "orders-exchange", ExchangeType.Topic, true, false,
+            It.IsAny<IDictionary<string, object?>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task PublishAsync_uses_the_event_type_name_as_the_routing_key_when_no_message_key_is_given()
     {
         // Arrange
-        var (connection, channel) = ConnectionReturningAnOpenChannel();
-        var publisher = new RabbitMqEventPublisher(connection, OptionsWithExchange("orders-exchange"));
+        var fixture = new RabbitMqEventPublisherFixture();
+        fixture.Setup_Options_ExchangeName_Result("orders-exchange");
+        var sut = fixture.NewInstance();
+        fixture.Setup_Connection_CreateChannelAsync_Result();
 
         // Act
-        await publisher.PublishAsync(new SampleEvent("payload"));
+        await sut.PublishAsync(new SampleEvent("payload"));
 
         // Assert
-        await channel.Received(1).BasicPublishAsync(
-            exchange: Arg.Is("orders-exchange"),
-            routingKey: Arg.Is(nameof(SampleEvent)),
-            mandatory: Arg.Is(false),
-            basicProperties: Arg.Any<BasicProperties>(),
-            body: Arg.Any<ReadOnlyMemory<byte>>(),
-            cancellationToken: Arg.Any<CancellationToken>());
+        fixture.Channel.Verify(c => c.BasicPublishAsync(
+            "orders-exchange", nameof(SampleEvent), false,
+            It.IsAny<BasicProperties>(), It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task PublishAsync_uses_the_explicit_message_key_as_the_routing_key_when_one_is_given()
     {
         // Arrange
-        var (connection, channel) = ConnectionReturningAnOpenChannel();
-        var publisher = new RabbitMqEventPublisher(connection, OptionsWithExchange("orders-exchange"));
+        var fixture = new RabbitMqEventPublisherFixture();
+        fixture.Setup_Options_ExchangeName_Result("orders-exchange");
+        var sut = fixture.NewInstance();
+        fixture.Setup_Connection_CreateChannelAsync_Result();
 
         // Act
-        await publisher.PublishAsync(new SampleEvent("payload"), messageKey: "campaign.published.v1");
+        await sut.PublishAsync(new SampleEvent("payload"), messageKey: "campaign.published.v1");
 
         // Assert
-        await channel.Received(1).BasicPublishAsync(
-            exchange: Arg.Is("orders-exchange"),
-            routingKey: Arg.Is("campaign.published.v1"),
-            mandatory: Arg.Is(false),
-            basicProperties: Arg.Any<BasicProperties>(),
-            body: Arg.Any<ReadOnlyMemory<byte>>(),
-            cancellationToken: Arg.Any<CancellationToken>());
+        fixture.Channel.Verify(c => c.BasicPublishAsync(
+            "orders-exchange", "campaign.published.v1", false,
+            It.IsAny<BasicProperties>(), It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task PublishAsync_publishes_to_the_explicit_destination_instead_of_the_default_exchange()
     {
         // Arrange
-        var (connection, channel) = ConnectionReturningAnOpenChannel();
-        var publisher = new RabbitMqEventPublisher(connection, OptionsWithExchange("orders-exchange"));
+        var fixture = new RabbitMqEventPublisherFixture();
+        fixture.Setup_Options_ExchangeName_Result("orders-exchange");
+        var sut = fixture.NewInstance();
+        fixture.Setup_Connection_CreateChannelAsync_Result();
 
         // Act
-        await publisher.PublishAsync(new SampleEvent("payload"), destination: "tenant-42-exchange");
+        await sut.PublishAsync(new SampleEvent("payload"), destination: "tenant-42-exchange");
 
         // Assert
-        await channel.Received(1).BasicPublishAsync(
-            exchange: Arg.Is("tenant-42-exchange"),
-            routingKey: Arg.Any<string>(),
-            mandatory: Arg.Any<bool>(),
-            basicProperties: Arg.Any<BasicProperties>(),
-            body: Arg.Any<ReadOnlyMemory<byte>>(),
-            cancellationToken: Arg.Any<CancellationToken>());
+        fixture.Channel.Verify(c => c.BasicPublishAsync(
+            "tenant-42-exchange", It.IsAny<string>(), It.IsAny<bool>(),
+            It.IsAny<BasicProperties>(), It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task PublishAsync_declares_each_distinct_destination_exchange_only_once()
     {
         // Arrange
-        var (connection, channel) = ConnectionReturningAnOpenChannel();
-        var publisher = new RabbitMqEventPublisher(connection, OptionsWithExchange("orders-exchange"));
+        var fixture = new RabbitMqEventPublisherFixture();
+        fixture.Setup_Options_ExchangeName_Result("orders-exchange");
+        var sut = fixture.NewInstance();
+        fixture.Setup_Connection_CreateChannelAsync_Result();
 
-        // Act — default exchange twice, one override exchange twice
-        await publisher.PublishAsync(new SampleEvent("a"));
-        await publisher.PublishAsync(new SampleEvent("b"));
-        await publisher.PublishAsync(new SampleEvent("c"), destination: "tenant-42-exchange");
-        await publisher.PublishAsync(new SampleEvent("d"), destination: "tenant-42-exchange");
+        // Act - default exchange twice, one override exchange twice
+        await sut.PublishAsync(new SampleEvent("a"));
+        await sut.PublishAsync(new SampleEvent("b"));
+        await sut.PublishAsync(new SampleEvent("c"), destination: "tenant-42-exchange");
+        await sut.PublishAsync(new SampleEvent("d"), destination: "tenant-42-exchange");
 
         // Assert
-        await channel.Received(1).ExchangeDeclareAsync(
-            exchange: Arg.Is("orders-exchange"),
-            type: Arg.Any<string>(),
-            durable: Arg.Any<bool>(),
-            autoDelete: Arg.Any<bool>(),
-            arguments: Arg.Any<IDictionary<string, object?>?>(),
-            passive: Arg.Any<bool>(),
-            noWait: Arg.Any<bool>(),
-            cancellationToken: Arg.Any<CancellationToken>());
-        await channel.Received(1).ExchangeDeclareAsync(
-            exchange: Arg.Is("tenant-42-exchange"),
-            type: Arg.Any<string>(),
-            durable: Arg.Any<bool>(),
-            autoDelete: Arg.Any<bool>(),
-            arguments: Arg.Any<IDictionary<string, object?>?>(),
-            passive: Arg.Any<bool>(),
-            noWait: Arg.Any<bool>(),
-            cancellationToken: Arg.Any<CancellationToken>());
+        fixture.Channel.Verify(c => c.ExchangeDeclareAsync(
+            "orders-exchange", It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(),
+            It.IsAny<IDictionary<string, object?>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Channel.Verify(c => c.ExchangeDeclareAsync(
+            "tenant-42-exchange", It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<bool>(),
+            It.IsAny<IDictionary<string, object?>?>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task PublishAsync_reuses_the_same_channel_when_publishing_to_different_destinations()
     {
         // Arrange
-        var (connection, _) = ConnectionReturningAnOpenChannel();
-        var publisher = new RabbitMqEventPublisher(connection, OptionsWithExchange("orders-exchange"));
+        var fixture = new RabbitMqEventPublisherFixture();
+        fixture.Setup_Options_ExchangeName_Result("orders-exchange");
+        var sut = fixture.NewInstance();
+        fixture.Setup_Connection_CreateChannelAsync_Result();
+        fixture.Setup_Channel_IsOpen_Result(true);
 
         // Act
-        await publisher.PublishAsync(new SampleEvent("a"));
-        await publisher.PublishAsync(new SampleEvent("b"), destination: "tenant-42-exchange");
+        await sut.PublishAsync(new SampleEvent("a"));
+        await sut.PublishAsync(new SampleEvent("b"), destination: "tenant-42-exchange");
 
         // Assert
-        await connection.Received(1).CreateChannelAsync(Arg.Any<CreateChannelOptions?>(), Arg.Any<CancellationToken>());
+        fixture.Connection.Verify(c => c.CreateChannelAsync(It.IsAny<CreateChannelOptions?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task PublishAsync_serializes_the_event_as_persistent_json()
     {
         // Arrange
-        var (connection, channel) = ConnectionReturningAnOpenChannel();
-        var publisher = new RabbitMqEventPublisher(connection, OptionsWithExchange("orders-exchange"));
-        var @event = new SampleEvent("payload");
+        var fixture = new RabbitMqEventPublisherFixture();
+        fixture.Setup_Options_ExchangeName_Result("orders-exchange");
+        var sut = fixture.NewInstance();
+        fixture.Setup_Connection_CreateChannelAsync_Result();
+        var @event = new SampleEvent(new Faker().Commerce.ProductName());
 
+        BasicProperties? capturedProperties = null;
         ReadOnlyMemory<byte> capturedBody = default;
-        var capturedProperties = new BasicProperties();
-        channel.When(c => c.BasicPublishAsync(
-                Arg.Any<string>(),
-                Arg.Any<string>(),
-                Arg.Any<bool>(),
-                Arg.Any<BasicProperties>(),
-                Arg.Any<ReadOnlyMemory<byte>>(),
-                Arg.Any<CancellationToken>()))
-            .Do(callInfo =>
-            {
-                capturedProperties = callInfo.ArgAt<BasicProperties>(3);
-                capturedBody = callInfo.ArgAt<ReadOnlyMemory<byte>>(4);
-            });
+        fixture.Channel
+            .Setup(c => c.BasicPublishAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(),
+                It.IsAny<BasicProperties>(), It.IsAny<ReadOnlyMemory<byte>>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, bool, BasicProperties, ReadOnlyMemory<byte>, CancellationToken>(
+                (_, _, _, properties, body, _) =>
+                {
+                    capturedProperties = properties;
+                    capturedBody = body;
+                })
+            .Returns(ValueTask.CompletedTask);
 
         // Act
-        await publisher.PublishAsync(@event);
+        await sut.PublishAsync(@event);
 
         // Assert
-        capturedProperties.Persistent.Should().BeTrue();
+        capturedProperties!.Persistent.Should().BeTrue();
         capturedProperties.ContentType.Should().Be("application/json");
         JsonSerializer.Deserialize<SampleEvent>(capturedBody.Span).Should().Be(@event);
     }
 
     [Fact]
-    public async Task DisposeAsync_disposes_the_underlying_channel_once_it_was_created()
+    public async Task DisposeAsync_disposes_the_channel_once_it_was_created()
     {
         // Arrange
-        var (connection, channel) = ConnectionReturningAnOpenChannel();
-        var publisher = new RabbitMqEventPublisher(connection, OptionsWithExchange("test-exchange"));
-        await publisher.PublishAsync(new SampleEvent("payload"));
+        var fixture = new RabbitMqEventPublisherFixture();
+        fixture.Setup_Options_ExchangeName_Result("test-exchange");
+        var sut = fixture.NewInstance();
+        fixture.Setup_Connection_CreateChannelAsync_Result();
+        await sut.PublishAsync(new SampleEvent("payload"));
 
         // Act
-        await publisher.DisposeAsync();
+        await sut.DisposeAsync();
 
         // Assert
-        await channel.Received(1).DisposeAsync();
+        fixture.Channel.Verify(c => c.DisposeAsync(), Times.Once);
     }
 
     [Fact]
     public async Task DisposeAsync_does_not_throw_when_no_channel_was_ever_created()
     {
         // Arrange
-        var (connection, _) = ConnectionReturningAnOpenChannel();
-        var publisher = new RabbitMqEventPublisher(connection, OptionsWithExchange("test-exchange"));
+        var fixture = new RabbitMqEventPublisherFixture();
+        fixture.Setup_Options_ExchangeName_Result("test-exchange");
+        var sut = fixture.NewInstance();
 
         // Act
-        var act = async () => await publisher.DisposeAsync();
+        var act = async () => await sut.DisposeAsync();
 
         // Assert
         await act.Should().NotThrowAsync();

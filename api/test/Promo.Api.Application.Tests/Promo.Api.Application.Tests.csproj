@@ -1,11 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup>
@@ -13,12 +9,11 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+    <!-- Pinned to 7.2.2: the last version under the free Apache 2.0 license, before v8's commercial license. -->
+    <PackageReference Include="FluentAssertions" Version="7.2.2" />
     <!-- Pinned to 4.20.72: after 4.20.2 reverted the SponsorLink telemetry controversy from 4.20.0. -->
     <PackageReference Include="Moq" Version="4.20.72" />
     <PackageReference Include="Bogus" Version="35.6.5" />
-    <!-- Pinned to 7.2.2: the last version under the free Apache 2.0 license, before v8's commercial license. -->
-    <PackageReference Include="FluentAssertions" Version="7.2.2" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,7 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Components.Messaging.RabbitMQ\Components.Messaging.RabbitMQ.csproj" />
+    <ProjectReference Include="..\..\src\Promo.Api.Application\Promo.Api.Application.csproj" />
   </ItemGroup>
 
 </Project>

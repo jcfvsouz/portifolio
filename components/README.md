@@ -98,7 +98,7 @@ Two reusable test patterns live in the shared, unpublished `Components.TestSuppo
 
 Both namespace to their folder (`Components.TestSupport.Builders`, `Components.TestSupport.Fixtures`), so a consuming test project's `using` statements say exactly which kind of helper it's pulling in.
 
-`Components.Messaging.RabbitMQ.Tests` is the one exception to "no mocking framework": `IConnection`/`IChannel` are large interfaces, so it uses **NSubstitute** rather than a hand-written fake — see its own [README](src/Components.Messaging.RabbitMQ/README.md#tests-and-sample) for why.
+This repo's standard test-double pattern for a class with interface dependencies worth mocking: **Moq**, an `xUnit` `IClassFixture<TFixture>` per class under test, with `ConfigureMocks()` (resets every `Mock<T>` to a fresh instance — no default `.Setup(...)` calls, each test sets up exactly what it needs) and `NewInstance()` (calls `ConfigureMocks()`, returns a freshly-wired instance of the class under test), plus named `Setup_{Dependency}_{Method}_Result(...)` methods instead of inline `.Setup(...)` lambdas in test bodies. `Components.Messaging.RabbitMQ.Tests` is where this is most visible — `IConnection`/`IChannel` are large interfaces, so hand-writing fakes would be mostly boilerplate — see its own [README](src/Components.Messaging.RabbitMQ/README.md#tests-and-sample) for the detail. A class with no interface dependencies (`Components.Result`, `Extensions.FluentResult`, `Promo.Api.Domain`'s `Campaign`) or one whose only dependency is cheaply constructed for real (`SqlServerRepository`'s `IConfiguration`) skips this pattern entirely — there's no mock to fixture.
 
 Run everything with:
 
