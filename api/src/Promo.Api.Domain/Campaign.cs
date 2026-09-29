@@ -24,6 +24,19 @@ public class Campaign
         Status = CampaignStatus.Draft;
     }
 
+    // Reconstitutes a campaign from persisted state. Not part of the public creation API -
+    // AddAsync always starts a campaign via the constructor above; this exists only for
+    // Infrastructure to rebuild the exact persisted state on read.
+    internal Campaign(Guid id, Guid tenantId, Guid buyerGroupId, string name, CampaignStatus status, DateTime? publishedAtUtc)
+    {
+        Id = id;
+        TenantId = tenantId;
+        BuyerGroupId = buyerGroupId;
+        Name = name;
+        Status = status;
+        PublishedAtUtc = publishedAtUtc;
+    }
+
     public Result Publish()
     {
         if (Status == CampaignStatus.Published)

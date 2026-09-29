@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Portfolio.Components.SQLServerRepository" Version="1.0.0" />
+    <PackageReference Include="Portfolio.Components.Messaging.RabbitMQ" Version="1.0.0" />
+    <PackageReference Include="Portfolio.Components.Hosting" Version="1.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Promo.Api.Application\Promo.Api.Application.csproj" />
+  </ItemGroup>
+
+</Project>

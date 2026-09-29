@@ -2,6 +2,8 @@
   <Folder Name="/src/">
     <Project Path="src/Promo.Api.Domain/Promo.Api.Domain.csproj" />
     <Project Path="src/Promo.Api.Application/Promo.Api.Application.csproj" />
+    <Project Path="src/Promo.Api.Infrastructure/Promo.Api.Infrastructure.csproj" />
+    <Project Path="src/Promo.Api/Promo.Api.csproj" />
   </Folder>
   <Folder Name="/test/">
     <Project Path="test/Promo.Api.Domain.Tests/Promo.Api.Domain.Tests.csproj" />

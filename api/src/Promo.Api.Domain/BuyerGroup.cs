@@ -16,4 +16,12 @@ public class BuyerGroup
         TenantId = tenantId;
         Name = name;
     }
+
+    // Reconstitutes a buyer group from persisted state - see Campaign's equivalent constructor.
+    internal BuyerGroup(Guid id, Guid tenantId, string name)
+    {
+        Id = id;
+        TenantId = tenantId;
+        Name = name;
+    }
 }
