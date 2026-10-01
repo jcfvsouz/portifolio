@@ -1,27 +1,30 @@
-using Components.Messaging;
-using Promo.Api.Domain;
+using Components.Result;
+using Promo.Api.Application.Notifications;
+using Promo.Api.Application.UseCases;
+using Promo.Api.Domain.Entities;
+using Promo.Api.Domain.Services;
 
 namespace Promo.Api.Application.Tests.Fixtures;
 
 public class PublishCampaignUseCaseFixture
 {
-    public Mock<ICampaignRepository> CampaignRepository { get; private set; } = new();
-    public Mock<IEventPublisher> EventPublisher { get; private set; } = new();
+    public Mock<IPublishCampaignService> PublishCampaignService { get; private set; } = new();
+    public Mock<ICampaignPublishedNotifier> Notifier { get; private set; } = new();
 
     public void ConfigureMocks()
     {
-        CampaignRepository = new();
-        EventPublisher = new();
+        PublishCampaignService = new();
+        Notifier = new();
     }
 
     public PublishCampaignUseCase NewInstance()
     {
         ConfigureMocks();
-        return new(CampaignRepository.Object, EventPublisher.Object);
+        return new(PublishCampaignService.Object, Notifier.Object);
     }
 
-    public void Setup_CampaignRepository_GetById_Result(Campaign? campaign) =>
-        CampaignRepository
-            .Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(campaign);
+    public void Setup_PublishCampaignService_Publish_Result(Result<Campaign> result) =>
+        PublishCampaignService
+            .Setup(s => s.PublishAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(result);
 }

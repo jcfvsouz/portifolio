@@ -1,6 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
+    <!-- Pinned to 9.0.6, the last line depending on Microsoft.OpenApi 1.x (stable Microsoft.OpenApi.Models
+         API) - Swashbuckle 10.x moved to Microsoft.OpenApi 2.x, which renamed namespaces and dropped
+         OpenApiSecurityScheme.Reference, still unsettled as of this writing. -->
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.23.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Promo.Api.Application\Promo.Api.Application.csproj" />
     <ProjectReference Include="..\Promo.Api.Infrastructure\Promo.Api.Infrastructure.csproj" />
   </ItemGroup>

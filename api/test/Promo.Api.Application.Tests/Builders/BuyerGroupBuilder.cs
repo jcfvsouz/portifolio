@@ -1,5 +1,5 @@
 using Bogus;
-using Promo.Api.Domain;
+using Promo.Api.Domain.Entities;
 
 namespace Promo.Api.Application.Tests.Builders;
 
