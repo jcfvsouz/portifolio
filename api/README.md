@@ -17,79 +17,116 @@ api/
 │   ├── schema.sql                 # creates Tenants/BuyerGroups/Buyers/Campaigns
 │   └── seed.sql                   # 1 tenant, 2 buyer groups, 5 buyers — fixed GUIDs, referenced below
 ├── src/
-│   ├── Promo.Api.Domain/          # Tenant, BuyerGroup, Buyer, Campaign — no dependency on anything else here
-│   ├── Promo.Api.Application/     # Use cases, DTOs, FluentValidation, CampaignPublished, repository interfaces
-│   ├── Promo.Api.Infrastructure/  # Dapper repositories + RabbitMQ wiring — the only layer that knows either exists
-│   └── Promo.Api/                 # Minimal API host — Program.cs, appsettings.json
+│   ├── Promo.Api.Domain/
+│   │   ├── Entities/                   # Tenant, BuyerGroup, Buyer, Campaign
+│   │   ├── Enums/                      # CampaignStatus
+│   │   ├── Repositories/               # ICampaignRepository, IBuyerGroupRepository (contracts only)
+│   │   ├── Services/                   # IPublishCampaignService/PublishCampaignService — see below
+│   │   └── AssemblyInfo.cs             # InternalsVisibleTo("Promo.Api.Infrastructure") — see Infrastructure below
+│   ├── Promo.Api.Application/
+│   │   ├── UseCases/                   # CreateCampaignUseCase, PublishCampaignUseCase
+│   │   ├── Notifications/              # ICampaignPublishedNotifier (contract only) — see Infrastructure below
+│   │   ├── Requests/                   # CreateCampaignRequest
+│   │   ├── Validators/                 # CreateCampaignRequestValidator
+│   │   └── ApplicationModule.cs        # IStartup — registers the validator, the service, and both use cases
+│   ├── Promo.Api.Infrastructure/
+│   │   ├── Repositories/               # CampaignRepository, BuyerGroupRepository (Dapper)
+│   │   ├── Persistence/                # CampaignRow, BuyerGroupRow — see below for why they exist
+│   │   ├── Notifications/              # CampaignPublished (internal), CampaignPublishedNotification — see below
+│   │   ├── AssemblyInfo.cs             # InternalsVisibleTo("Promo.Api.Infrastructure.Tests")
+│   │   └── InfrastructureModule.cs     # IStartup — registers SQL + repositories + notifier + composes RabbitMqPublisherModule
+│   └── Promo.Api/
+│       ├── Endpoints/                  # CampaignEndpoints, AuthEndpoints (extension methods mapping routes)
+│       ├── Configuration/               # SwaggerModule, JwtAuthenticationModule, ExceptionHandlingModule (all IStartup)
+│       ├── ExceptionHandling/           # GlobalExceptionHandler
+│       ├── Program.cs
+│       └── appsettings.json
 └── test/
     ├── Promo.Api.Domain.Tests/
-    └── Promo.Api.Application.Tests/
+    │   ├── Entities/                   # CampaignTests
+    │   ├── Fixtures/                   # PublishCampaignServiceFixture
+    │   └── Services/                   # PublishCampaignServiceTests
+    ├── Promo.Api.Application.Tests/
+    │   ├── Builders/                    # Bogus-backed test data — mirrors components/'s TestSupport pattern
+    │   ├── Fixtures/                    # Moq fixtures — see the components root README for the pattern
+    │   ├── UseCases/                    # CreateCampaignUseCaseTests, PublishCampaignUseCaseTests
+    │   └── Validators/                  # CreateCampaignRequestValidatorTests
+    └── Promo.Api.Infrastructure.Tests/
+        └── Notifications/               # CampaignPublishedNotificationTests (+ its Fixture)
 ```
+
+Every namespace mirrors its folder path 1:1 (`Promo.Api.Application.UseCases` lives in `Promo.Api.Application/UseCases/`, and so on) — same convention `components/`'s `Builders/`/`Fixtures/` folders already use.
 
 ## Domain
 
-`Tenant`, `BuyerGroup`, `Buyer`, `Campaign` — plain classes with a public constructor for creation and private setters, so nothing outside the entity can put it in an invalid state. `Campaign.Publish()` is the one real business rule: it refuses to publish an already-published campaign, returning [`Result`](../components/src/Components.Result/README.md) instead of throwing — same "business-rule failures are never exceptions" convention as the rest of the repo.
+`Tenant`, `BuyerGroup`, `Buyer`, `Campaign` — plain classes with a public constructor for creation, so nothing outside the entity can put it in an invalid state through construction. `Campaign.Publish()` is the one real business rule: it refuses to publish an already-published campaign, returning [`Result`](../components/src/Components.Result/README.md) instead of throwing — same "business-rule failures are never exceptions" convention as the rest of the repo.
 
-Each entity also has an `internal` constructor that takes every field, `Id` included — see [Infrastructure](#infrastructure) for why.
+`Campaign` and `BuyerGroup` use `internal set` rather than `private set` on their properties — not `private`, because Infrastructure needs to rebuild an entity's exact persisted state (`Id` included) on read, and there's no public constructor shaped for that. `internal` still keeps every other layer (Application, the API host) locked out — only `Promo.Api.Infrastructure` gets that access, via `InternalsVisibleTo` in `AssemblyInfo.cs`. See [Infrastructure](#infrastructure) for where it's actually used.
+
+`ICampaignRepository`/`IBuyerGroupRepository` and `IPublishCampaignService`/`PublishCampaignService` live here too, not in Application: a repository contract is part of the domain model (it's phrased entirely in terms of `Campaign`/`BuyerGroup`), and `PublishCampaignService` is a domain service — it enforces `Campaign.Publish()`'s invariant and nothing else, with no notion of HTTP, validation, or messaging. Infrastructure implements the repositories; `ApplicationModule` registers `PublishCampaignService` itself, since Domain is a plain class library with no `IStartup` of its own.
+
+```csharp
+public class PublishCampaignService(ICampaignRepository campaignRepository) : IPublishCampaignService
+{
+    public async Task<Result<Campaign>> PublishAsync(Guid campaignId, CancellationToken cancellationToken = default)
+    {
+        var campaign = await campaignRepository.GetByIdAsync(campaignId, cancellationToken);
+        if (campaign is null)
+            return Result<Campaign>.Error($"Campaign '{campaignId}' was not found.");
+
+        var publishResult = campaign.Publish();
+        if (!publishResult.Success)
+            return Result<Campaign>.Error(publishResult.ErrorMessage);
+
+        await campaignRepository.UpdateAsync(campaign, cancellationToken);
+        return Result<Campaign>.Ok(campaign);
+    }
+}
+```
 
 ## Application
 
-- `ICampaignRepository`, `IBuyerGroupRepository` — interfaces Domain-adjacent code depends on; Infrastructure implements them. This is the Dependency Inversion in "Clean Architecture": Application defines the contract, Infrastructure obeys it.
 - `CreateCampaignUseCase` — validates the request (FluentValidation), loads the target `BuyerGroup` to confirm it exists and to derive its `TenantId`, creates the `Campaign`, persists it. Returns `Result<Guid>` (the new campaign's id).
-- `PublishCampaignUseCase` — loads the campaign, calls `Campaign.Publish()`, persists the change, then publishes `CampaignPublished` via [`IEventPublisher`](../components/src/Components.Messaging/README.md). Returns `Result`.
-- `CampaignPublished` — the integration event contract itself. It lives here (not in a separate shared package) because only `Promo.Api` publishes it today; if `worker/` ends up needing the same type, that's the point to extract it into something both projects reference — not before.
-- `ApplicationModule : IStartup` — registers the validator and both use cases. See [`Components.Hosting`](../components/src/Components.Hosting/README.md) for what `IStartup`/`UseStartup<T>()` are.
+- `ICampaignPublishedNotifier` — a Dependency Inversion: Application only declares "something can be told a campaign was published" (`NotifyAsync(Campaign, CancellationToken)`); it has no idea RabbitMQ, or any broker, exists. Infrastructure implements it — see below.
+- `PublishCampaignUseCase` — orchestration only: calls `IPublishCampaignService.PublishAsync` (Domain's service), and if that succeeded, calls `ICampaignPublishedNotifier.NotifyAsync` with the updated campaign. That's its entire job — it depends on neither `ICampaignRepository` nor any messaging type directly, only the Domain service contract and the Application-level notifier abstraction. Returns `Result`.
+- `ApplicationModule : IStartup` — registers the validator, `IPublishCampaignService -> PublishCampaignService` (Domain's own type — Application owns this registration only because Domain has no `IStartup` to do it itself), and both use cases. `ICampaignPublishedNotifier` is registered by `InfrastructureModule`, since that's the layer providing its implementation.
 
 ## Infrastructure
 
 `CampaignRepository` and `BuyerGroupRepository` — Dapper queries against [`ISqlRepository`](../components/src/Components.SQLRepository/README.md), same abstraction `Components.SQLServerRepository` implements.
 
-**The one non-obvious piece here:** Dapper's default materialization needs a **public** parameterless constructor and **public** setters — Domain's entities deliberately have neither. So a `CampaignRow`/`BuyerGroupRow` — a plain, publicly-settable shape with no behavior — is what Dapper actually reads a row into; a `.ToDomain()` method on the row then calls the entity's `internal` all-fields constructor to produce the real `Campaign`/`BuyerGroup`. That constructor is `internal` specifically so only `Promo.Api.Infrastructure` can reach it (`Promo.Api.Domain`'s `AssemblyInfo.cs` grants it via `InternalsVisibleTo`) — Application and the API host still only ever see the constructor that enforces a fresh campaign starts as `Draft`.
+**The one non-obvious piece here:** Dapper's default materialization needs a **public** parameterless constructor and **public** setters — Domain's entities deliberately have neither. So a `CampaignRow`/`BuyerGroupRow` — a plain, publicly-settable shape with no behavior — is what Dapper actually reads a row into. Each row declares an **explicit conversion operator** to its entity (`public static explicit operator Campaign(CampaignRow row)`), built with an object initializer against the entity's `internal set` properties:
+
+```csharp
+public static explicit operator Campaign(CampaignRow row) =>
+    new(row.TenantId, row.BuyerGroupId, row.Name) { Id = row.Id, Status = (CampaignStatus)row.Status, PublishedAtUtc = row.PublishedAtUtc };
+```
+
+No dedicated reconstitution constructor needed in Domain — the operator is what "knows how to rebuild a `Campaign` from storage," and it lives in Infrastructure (where `CampaignRow` is declared), not Domain, keeping the dependency pointed the right way. The repository then just casts: `row is null ? null : (Campaign)row`.
 
 `Campaign.Status` (`CampaignStatus` enum) is stored as a plain `INT` column matching the enum's underlying values — Dapper binds an enum parameter as its numeric value by default, so this needs zero custom type handling in either direction.
 
-`InfrastructureModule : IStartup` registers `AddSqlServerRepository()` and both repositories, then **composes** with `Components.Messaging.RabbitMQ`'s own `RabbitMqPublisherModule` (`new RabbitMqPublisherModule().ConfigureServices(services, configuration)`) instead of calling `AddRabbitMqPublisher(configuration)` directly — reusing the existing module is the same idea as the DI extension methods it wraps, just one level up.
-
-No dedicated test project — there's no logic here to isolate from a real database (each method is a direct Dapper call), so correctness is proven by actually running the host, the same way `Components.SQLServerRepository.Sample` proves its wiring without a database-touching unit test.
-
-## The host (`Promo.Api`)
+`CampaignPublishedNotification : ICampaignPublishedNotifier` is where the `CampaignPublished` event actually gets published — Application only knows it can `NotifyAsync(Campaign, CancellationToken)`; Infrastructure is the layer allowed to know both the `Campaign` entity and `Components.Messaging`'s `IEventPublisher`, so it owns the mapping from one to the other:
 
 ```csharp
-var builder = WebApplication.CreateBuilder(args);
-builder.UseStartup<ApplicationModule>();
-builder.UseStartup<InfrastructureModule>();
+public class CampaignPublishedNotification(IEventPublisher eventPublisher) : ICampaignPublishedNotifier
+{
+    public Task NotifyAsync(Campaign campaign, CancellationToken cancellationToken = default) =>
+        eventPublisher.PublishAsync(
+            new CampaignPublished(campaign.Id, campaign.TenantId, campaign.BuyerGroupId, campaign.Name, campaign.PublishedAtUtc!.Value),
+            cancellationToken: cancellationToken);
+}
 ```
 
-Two endpoints:
+`CampaignPublished` itself — the event record actually put on the bus — lives here too, as an `internal record`, not in Application: nothing outside Infrastructure needs to know its shape, only that *something* gets notified. Making it constructible from tests without exposing it publicly is what `AssemblyInfo.cs`'s `[assembly: InternalsVisibleTo("Promo.Api.Infrastructure.Tests")]` is for.
 
-- `POST /campaigns` — body `{ "name": "...", "buyerGroupId": "..." }`. `201 Created` with the new id, or `400` with the validation/not-found error.
-- `POST /campaigns/{id}/publish` — `200` on success, `400` if the campaign doesn't exist or is already published.
+`InfrastructureModule : IStartup` registers `AddSqlServerRepository()`, both repositories, and `ICampaignPublishedNotifier -> CampaignPublishedNotification`, then **composes** with `Components.Messaging.RabbitMQ`'s own `RabbitMqPublisherModule` (`new RabbitMqPublisherModule().ConfigureServices(services, configuration)`) instead of calling `AddRabbitMqPublisher(configuration)` directly — reusing the existing module is the same idea as the DI extension methods it wraps, just one level up.
 
-Configuration (`appsettings.json`): `ConnectionStrings:SqlServer` and a `RabbitMq` section, same shape as `Components.SQLServerRepository`/`Components.Messaging.RabbitMQ`'s own samples — there's no `docker/` compose file yet (that's a separate, still-planned piece of this project), so these point at a container that doesn't exist until you stand one up yourself.
+The repositories still have no dedicated tests — there's no logic here to isolate from a real database (each method is a direct Dapper call), so correctness there is proven by actually running the host, the same way `Components.SQLServerRepository.Sample` proves its wiring without a database-touching unit test. `CampaignPublishedNotification` is different: it's pure mapping logic with a mockable dependency, so it gets a real unit test in `Promo.Api.Infrastructure.Tests`, following the same Moq + `IClassFixture` pattern as everything else in this repo.
 
-### Verified by actually running it
+## The host
 
-- `POST /campaigns` with an empty `name` → `400`, with FluentValidation's own localized message (`'Name' deve ser informado.` in a pt-BR environment) — and it never touches the database, proving validation happens before any repository call.
-- `POST /campaigns` with a valid body → reaches a real SQL Server round trip through Dapper and fails only at login (no matching `docker/` container yet) — confirming the whole chain (routing → DI → use case → repository → Dapper → `Microsoft.Data.SqlClient`) is wired correctly end to end.
-
-## Running it yourself
-
-```bash
-cd api
-dotnet build Promo.Api.slnx
-dotnet run --project src/Promo.Api
-```
-
-Point `ConnectionStrings:SqlServer` at a real SQL Server, run `database/schema.sql` then `database/seed.sql` against it, and point `RabbitMq` at a real broker to exercise the full path. `database/seed.sql` uses fixed GUIDs on purpose:
-
-- BuyerGroup `22222222-2222-2222-2222-222222222222` — VIP Customers
-- BuyerGroup `33333333-3333-3333-3333-333333333333` — Newsletter Subscribers
-
-```bash
-curl -X POST http://localhost:<port-printed-on-startup>/campaigns \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Black Friday","buyerGroupId":"22222222-2222-2222-2222-222222222222"}'
-```
+[`Promo.Api`](src/Promo.Api/README.md) is the only `Microsoft.NET.Sdk.Web` project here — it wires Domain/Application/Infrastructure together via `UseStartup<T>()`, and owns everything HTTP-specific: endpoint routing, Swagger, JWT auth, global exception handling. See its own README for the full detail (modules, endpoints, configuration, and how to run it and exercise it end to end).
 
 ## Tests
 
@@ -98,4 +135,4 @@ cd api
 dotnet test Promo.Api.slnx
 ```
 
-`Promo.Api.Domain.Tests` and `Promo.Api.Application.Tests` follow this repo's standard pattern — Moq + `IClassFixture<TFixture>` per class under test, `ConfigureMocks()`/`NewInstance()`, named `Setup_{Dependency}_{Method}_Result(...)` methods, Bogus-backed builders for test data — see the [components root README](../components/README.md#tests) for the full rationale.
+`Promo.Api.Domain.Tests`, `Promo.Api.Application.Tests`, and `Promo.Api.Infrastructure.Tests` all follow this repo's standard pattern — Moq + `IClassFixture<TFixture>` per class under test, `ConfigureMocks()`/`NewInstance()`, named `Setup_{Dependency}_{Method}_Result(...)` methods, Bogus-backed builders for test data — see the [components root README](../components/README.md#tests) for the full rationale. `Promo.Api.Infrastructure.Tests` is the one project here testing a type Infrastructure keeps `internal` (`CampaignPublishedNotification`'s `CampaignPublished` event) — made visible to it only, via `[assembly: InternalsVisibleTo("Promo.Api.Infrastructure.Tests")]`.

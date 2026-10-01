@@ -1,6 +1,9 @@
 using FluentValidation;
 using FluentValidation.Results;
-using Promo.Api.Domain;
+using Promo.Api.Application.Requests;
+using Promo.Api.Application.UseCases;
+using Promo.Api.Domain.Entities;
+using Promo.Api.Domain.Repositories;
 
 namespace Promo.Api.Application.Tests.Fixtures;
 

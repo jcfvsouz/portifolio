@@ -1,4 +1,5 @@
 using Bogus;
+using Promo.Api.Application.Requests;
 
 namespace Promo.Api.Application.Tests.Builders;
 
